@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>L版 / 2L版 Cropper</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      body {
+        margin: 0;
+        padding: 24px;
+        background: #f5f6f9;
+        color: #1f2937;
+      }
+
+      .container {
+        max-width: 980px;
+        margin: 0 auto;
+        display: grid;
+        gap: 16px;
+      }
+
+      .panel {
+        background: #fff;
+        border-radius: 12px;
+        padding: 16px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: 1.4rem;
+      }
+
+      .controls {
+        display: grid;
+        gap: 10px;
+      }
+
+      .control-row {
+        display: grid;
+        grid-template-columns: 180px 1fr;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .preview-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 12px;
+      }
+
+      canvas {
+        width: 100%;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        background: #f9fafb;
+      }
+
+      button {
+        appearance: none;
+        border: 0;
+        border-radius: 8px;
+        background: #2563eb;
+        color: #fff;
+        font-weight: 600;
+        padding: 10px 14px;
+        cursor: pointer;
+      }
+
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      .meta {
+        font-size: 0.92rem;
+        color: #4b5563;
+        margin-top: 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="container">
+      <section class="panel">
+        <h1>L版 / 2L版 写真アスペクト比クロッパー</h1>
+        <div class="controls">
+          <label class="control-row">
+            <span>写真を選択</span>
+            <input id="fileInput" type="file" accept="image/*" />
+          </label>
+          <label class="control-row">
+            <span>プリントサイズ</span>
+            <select id="sizeSelect">
+              <option value="L">L版 (89×127mm)</option>
+              <option value="2L">2L版 (127×178mm)</option>
+            </select>
+          </label>
+          <label class="control-row">
+            <span>横位置寄せ (%)</span>
+            <input id="xRange" type="range" min="0" max="100" value="50" />
+          </label>
+          <label class="control-row">
+            <span>縦位置寄せ (%)</span>
+            <input id="yRange" type="range" min="0" max="100" value="50" />
+          </label>
+          <div class="control-row">
+            <span>書き出し</span>
+            <button id="downloadBtn" disabled>トリミング画像をダウンロード</button>
+          </div>
+        </div>
+        <p id="meta" class="meta">写真を読み込むと、L版/2L版向けにトリミング範囲を調整できます。</p>
+      </section>
+
+      <section class="preview-grid">
+        <div class="panel">
+          <strong>元画像 + トリミング範囲</strong>
+          <canvas id="sourceCanvas" width="800" height="600"></canvas>
+        </div>
+        <div class="panel">
+          <strong>トリミング結果</strong>
+          <canvas id="resultCanvas" width="800" height="600"></canvas>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const RATIOS = {
+        L: 127 / 89,
+        '2L': 178 / 127,
+      };
+
+      const fileInput = document.getElementById('fileInput');
+      const sizeSelect = document.getElementById('sizeSelect');
+      const xRange = document.getElementById('xRange');
+      const yRange = document.getElementById('yRange');
+      const downloadBtn = document.getElementById('downloadBtn');
+      const meta = document.getElementById('meta');
+
+      const sourceCanvas = document.getElementById('sourceCanvas');
+      const resultCanvas = document.getElementById('resultCanvas');
+      const sourceCtx = sourceCanvas.getContext('2d');
+      const resultCtx = resultCanvas.getContext('2d');
+
+      let image = null;
+      let crop = null;
+
+      function clearCanvas(ctx, canvas) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#f3f4f6';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+
+      function getTargetRatio() {
+        const baseRatio = RATIOS[sizeSelect.value];
+        if (!image) return baseRatio;
+        const imageRatio = image.width / image.height;
+        return imageRatio >= 1 ? baseRatio : 1 / baseRatio;
+      }
+
+      function calculateCrop() {
+        if (!image) return null;
+
+        const targetRatio = getTargetRatio();
+        const imageRatio = image.width / image.height;
+        let cropWidth;
+        let cropHeight;
+
+        if (imageRatio > targetRatio) {
+          cropHeight = image.height;
+          cropWidth = cropHeight * targetRatio;
+        } else {
+          cropWidth = image.width;
+          cropHeight = cropWidth / targetRatio;
+        }
+
+        const maxX = image.width - cropWidth;
+        const maxY = image.height - cropHeight;
+        const x = (maxX * Number(xRange.value)) / 100;
+        const y = (maxY * Number(yRange.value)) / 100;
+
+        return { x, y, cropWidth, cropHeight, targetRatio };
+      }
+
+      function drawSource() {
+        clearCanvas(sourceCtx, sourceCanvas);
+        if (!image || !crop) return;
+
+        const scale = Math.min(sourceCanvas.width / image.width, sourceCanvas.height / image.height);
+        const drawWidth = image.width * scale;
+        const drawHeight = image.height * scale;
+        const offsetX = (sourceCanvas.width - drawWidth) / 2;
+        const offsetY = (sourceCanvas.height - drawHeight) / 2;
+
+        sourceCtx.drawImage(image, offsetX, offsetY, drawWidth, drawHeight);
+
+        const boxX = offsetX + crop.x * scale;
+        const boxY = offsetY + crop.y * scale;
+        const boxW = crop.cropWidth * scale;
+        const boxH = crop.cropHeight * scale;
+
+        sourceCtx.strokeStyle = '#ef4444';
+        sourceCtx.lineWidth = 3;
+        sourceCtx.strokeRect(boxX, boxY, boxW, boxH);
+      }
+
+      function drawResult() {
+        clearCanvas(resultCtx, resultCanvas);
+        if (!image || !crop) return;
+
+        const outputWidth = Math.round(crop.targetRatio >= 1 ? 1600 : 1200);
+        const outputHeight = Math.round(outputWidth / crop.targetRatio);
+        resultCanvas.width = outputWidth;
+        resultCanvas.height = outputHeight;
+
+        resultCtx.drawImage(
+          image,
+          crop.x,
+          crop.y,
+          crop.cropWidth,
+          crop.cropHeight,
+          0,
+          0,
+          outputWidth,
+          outputHeight,
+        );
+
+        meta.textContent = `画像: ${image.width}×${image.height}px / トリミング: ${Math.round(crop.cropWidth)}×${Math.round(crop.cropHeight)}px / 出力: ${outputWidth}×${outputHeight}px`;
+      }
+
+      function render() {
+        crop = calculateCrop();
+        drawSource();
+        drawResult();
+        downloadBtn.disabled = !image;
+      }
+
+      fileInput.addEventListener('change', (event) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = () => {
+          const nextImage = new Image();
+          nextImage.onload = () => {
+            image = nextImage;
+            render();
+          };
+          nextImage.src = reader.result;
+        };
+        reader.readAsDataURL(file);
+      });
+
+      sizeSelect.addEventListener('change', render);
+      xRange.addEventListener('input', render);
+      yRange.addEventListener('input', render);
+
+      downloadBtn.addEventListener('click', () => {
+        if (!image) return;
+        const link = document.createElement('a');
+        link.download = `cropped-${sizeSelect.value}.jpg`;
+        link.href = resultCanvas.toDataURL('image/jpeg', 0.95);
+        link.click();
+      });
+
+      clearCanvas(sourceCtx, sourceCanvas);
+      clearCanvas(resultCtx, resultCanvas);
+    </script>
+  </body>
+</html>
