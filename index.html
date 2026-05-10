@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L版/2L版 アスペクト比変換ツール</title>
+<style>
+  :root {
+    --bg: #f5f5f7;
+    --surface: #ffffff;
+    --border: #d2d2d7;
+    --text: #1d1d1f;
+    --text-muted: #6e6e73;
+    --primary: #0071e3;
+    --primary-hover: #0077ed;
+    --secondary: #e8e8ed;
+    --secondary-hover: #d8d8dd;
+    --accent: #34c759;
+    --shadow: rgba(0, 0, 0, 0.08);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+  .screen {
+    flex: 1;
+    display: none;
+    flex-direction: column;
+    padding: 20px;
+    max-width: 1200px;
+    width: 100%;
+    margin: 0 auto;
+  }
+  .screen.active { display: flex; }
+  h1 {
+    font-size: 24px;
+    margin: 0 0 8px;
+  }
+  p.lead {
+    color: var(--text-muted);
+    margin: 0 0 24px;
+    font-size: 14px;
+  }
+
+  /* ===== 初期画面 ===== */
+  .paper-select {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .paper-option {
+    flex: 1;
+    padding: 16px;
+    border: 2px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.15s;
+    user-select: none;
+  }
+  .paper-option:hover { border-color: #b5b5b9; }
+  .paper-option.selected {
+    border-color: var(--primary);
+    background: #eaf3ff;
+  }
+  .paper-option .name { font-weight: 600; font-size: 16px; }
+  .paper-option .size { color: var(--text-muted); font-size: 13px; margin-top: 4px; }
+
+  .drop-area {
+    flex: 1;
+    min-height: 280px;
+    border: 2px dashed var(--border);
+    border-radius: 16px;
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 32px;
+    transition: all 0.15s;
+    text-align: center;
+  }
+  .drop-area.dragging {
+    border-color: var(--primary);
+    background: #eaf3ff;
+  }
+  .drop-area .icon { font-size: 48px; }
+  .drop-area .msg { font-size: 16px; color: var(--text-muted); }
+  .privacy-note {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 12px;
+    margin-top: 16px;
+  }
+
+  /* ===== ボタン ===== */
+  button {
+    font-family: inherit;
+    font-size: 14px;
+    border: none;
+    border-radius: 10px;
+    padding: 10px 18px;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.05s;
+    user-select: none;
+  }
+  button:active { transform: scale(0.98); }
+  button.primary {
+    background: var(--primary);
+    color: white;
+    font-weight: 600;
+  }
+  button.primary:hover { background: var(--primary-hover); }
+  button.secondary {
+    background: var(--secondary);
+    color: var(--text);
+  }
+  button.secondary:hover { background: var(--secondary-hover); }
+  button.large {
+    font-size: 16px;
+    padding: 14px 28px;
+  }
+
+  /* ===== 編集画面 ===== */
+  .edit-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+  .progress {
+    font-size: 18px;
+    font-weight: 600;
+  }
+  .paper-display {
+    color: var(--text-muted);
+    font-size: 14px;
+  }
+
+  .mode-bar {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+    background: var(--surface);
+    padding: 6px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+  }
+  .mode-btn {
+    flex: 1;
+    background: transparent;
+    color: var(--text);
+    font-weight: 500;
+    padding: 10px;
+    border-radius: 8px;
+  }
+  .mode-btn:hover { background: var(--secondary); }
+  .mode-btn.active {
+    background: var(--primary);
+    color: white;
+  }
+  .mode-btn.active:hover { background: var(--primary-hover); }
+  .mode-btn .key {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 6px;
+    background: rgba(0,0,0,0.08);
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 400;
+  }
+  .mode-btn.active .key {
+    background: rgba(255,255,255,0.25);
+  }
+
+  .canvas-wrap {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    min-height: 300px;
+    padding: 16px;
+    box-shadow: 0 1px 3px var(--shadow);
+  }
+  #previewCanvas {
+    max-width: 100%;
+    max-height: 100%;
+    display: block;
+    touch-action: none;
+  }
+  #previewCanvas.crop-mode { cursor: grab; }
+  #previewCanvas.crop-mode.dragging { cursor: grabbing; }
+
+  .edit-footer {
+    display: flex;
+    gap: 10px;
+    margin-top: 16px;
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+  .edit-footer .group { display: flex; gap: 10px; }
+
+  /* ===== 完了画面 ===== */
+  .done-screen {
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    flex: 1;
+  }
+  .done-screen .big-num {
+    font-size: 64px;
+    font-weight: 700;
+    color: var(--accent);
+    margin-bottom: 8px;
+  }
+  .done-screen .msg {
+    font-size: 18px;
+    margin-bottom: 32px;
+    color: var(--text-muted);
+  }
+
+  .filename {
+    color: var(--text-muted);
+    font-size: 12px;
+    margin-top: 8px;
+    text-align: center;
+    word-break: break-all;
+  }
+
+  @media (max-width: 600px) {
+    .screen { padding: 12px; }
+    h1 { font-size: 20px; }
+    .mode-bar { flex-wrap: wrap; }
+    .mode-btn { font-size: 13px; padding: 8px; }
+    .mode-btn .key { display: none; }
+    .edit-footer { flex-direction: column; }
+    .edit-footer .group { width: 100%; }
+    .edit-footer button { flex: 1; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== 初期画面 ===== -->
+<div id="screenStart" class="screen active">
+  <h1>L版/2L版 アスペクト比変換ツール</h1>
+  <p class="lead">写真を投入して、1枚ずつクロップ位置や白帯を選びます。</p>
+
+  <div class="paper-select" id="paperSelect">
+    <div class="paper-option selected" data-paper="L">
+      <div class="name">L版</div>
+      <div class="size">89 × 127 mm</div>
+    </div>
+    <div class="paper-option" data-paper="2L">
+      <div class="name">2L版</div>
+      <div class="size">127 × 178 mm</div>
+    </div>
+  </div>
+
+  <div class="drop-area" id="dropArea">
+    <div class="icon">📷</div>
+    <div class="msg">ここに写真をドラッグ＆ドロップ</div>
+    <div>または</div>
+    <button class="primary large" id="pickBtn">ファイルを選択</button>
+    <input type="file" id="fileInput" accept="image/jpeg,image/png,image/webp" multiple style="display:none">
+  </div>
+  <p class="privacy-note">画像はブラウザ内でのみ処理されます。アップロードはされません。</p>
+</div>
+
+<!-- ===== 編集画面 ===== -->
+<div id="screenEdit" class="screen">
+  <div class="edit-header">
+    <div class="progress" id="progress">1 / 1</div>
+    <div class="paper-display" id="paperDisplay">L版 89×127mm</div>
+  </div>
+
+  <div class="mode-bar">
+    <button class="mode-btn" data-mode="crop-h">横クロップ <span class="key">1</span></button>
+    <button class="mode-btn" data-mode="crop-v">縦クロップ <span class="key">2</span></button>
+    <button class="mode-btn" data-mode="fit">白帯 <span class="key">3</span></button>
+  </div>
+
+  <div class="canvas-wrap">
+    <canvas id="previewCanvas"></canvas>
+  </div>
+  <div class="filename" id="filenameDisplay"></div>
+
+  <div class="edit-footer">
+    <div class="group">
+      <button class="secondary" id="resetBtn">やり直し</button>
+      <button class="secondary" id="skipBtn">スキップ <span style="opacity:.6;font-size:11px">(S)</span></button>
+    </div>
+    <div class="group">
+      <button class="primary" id="saveBtn">保存して次へ <span style="opacity:.7;font-size:11px;font-weight:400">(Enter)</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 完了画面 ===== -->
+<div id="screenDone" class="screen done-screen">
+  <div class="big-num" id="doneCount">0</div>
+  <div class="msg"><span id="doneTotal">0</span> 枚を処理しました</div>
+  <button class="primary large" id="restartBtn">もう一度</button>
+</div>
+
+<script>
+'use strict';
+
+// ====== 定数 ======
+const RATIOS = {
+  L:    { landscape: 127 / 89,  portrait: 89 / 127,  label: 'L版 89×127mm' },
+  '2L': { landscape: 178 / 127, portrait: 127 / 178, label: '2L版 127×178mm' },
+};
+const MODE_SUFFIX = { 'crop-h': 'crop-h', 'crop-v': 'crop-v', 'fit': 'fit' };
+const PAPER_SUFFIX = { 'L': 'L', '2L': '2L' };
+const JPEG_QUALITY = 0.95;
+
+// ====== 状態 ======
+const state = {
+  paper: 'L',
+  queue: [],         // [{ file, name }]
+  index: 0,
+  processed: 0,
+  bitmap: null,      // 現在の ImageBitmap
+  mode: 'crop-h',    // 'crop-h' | 'crop-v' | 'fit'
+  crop: { x: 0, y: 0, w: 0, h: 0 }, // ソース座標系のクロップ枠
+  drag: null,        // { startPointer, startCrop }
+};
+
+// ====== 画面切替 ======
+const screens = {
+  start: document.getElementById('screenStart'),
+  edit:  document.getElementById('screenEdit'),
+  done:  document.getElementById('screenDone'),
+};
+function showScreen(name) {
+  Object.values(screens).forEach(s => s.classList.remove('active'));
+  screens[name].classList.add('active');
+}
+
+// ====== 初期画面：用紙選択 ======
+const paperSelect = document.getElementById('paperSelect');
+paperSelect.addEventListener('click', e => {
+  const opt = e.target.closest('.paper-option');
+  if (!opt) return;
+  paperSelect.querySelectorAll('.paper-option').forEach(o => o.classList.remove('selected'));
+  opt.classList.add('selected');
+  state.paper = opt.dataset.paper;
+});
+
+// ====== 初期画面：ファイル投入 ======
+const dropArea = document.getElementById('dropArea');
+const fileInput = document.getElementById('fileInput');
+const pickBtn = document.getElementById('pickBtn');
+
+pickBtn.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', e => handleFiles(e.target.files));
+
+['dragenter', 'dragover'].forEach(ev => {
+  document.body.addEventListener(ev, e => {
+    e.preventDefault();
+    if (screens.start.classList.contains('active')) dropArea.classList.add('dragging');
+  });
+});
+['dragleave', 'drop'].forEach(ev => {
+  document.body.addEventListener(ev, e => {
+    e.preventDefault();
+    dropArea.classList.remove('dragging');
+  });
+});
+document.body.addEventListener('drop', e => {
+  e.preventDefault();
+  if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
+    handleFiles(e.dataTransfer.files);
+  }
+});
+
+async function handleFiles(fileList) {
+  const files = Array.from(fileList).filter(f => /^image\/(jpeg|png|webp)$/.test(f.type));
+  if (!files.length) {
+    alert('対応している画像 (JPEG/PNG/WebP) が見つかりませんでした。');
+    return;
+  }
+  // 編集中に再ドロップされた場合は確認
+  if (screens.edit.classList.contains('active')) {
+    if (!confirm('現在のキューを破棄して新しい画像セットで開始しますか？')) return;
+    closeBitmap();
+  }
+  state.queue = files.map(f => ({ file: f, name: f.name }));
+  state.index = 0;
+  state.processed = 0;
+  showScreen('edit');
+  await loadCurrent();
+}
+
+// ====== 編集画面 ======
+const previewCanvas = document.getElementById('previewCanvas');
+const previewCtx = previewCanvas.getContext('2d');
+const progressEl = document.getElementById('progress');
+const paperDisplayEl = document.getElementById('paperDisplay');
+const filenameDisplay = document.getElementById('filenameDisplay');
+const modeBtns = document.querySelectorAll('.mode-btn');
+const saveBtn = document.getElementById('saveBtn');
+const skipBtn = document.getElementById('skipBtn');
+const resetBtn = document.getElementById('resetBtn');
+
+modeBtns.forEach(btn => {
+  btn.addEventListener('click', () => setMode(btn.dataset.mode));
+});
+saveBtn.addEventListener('click', () => saveAndNext());
+skipBtn.addEventListener('click', () => skipCurrent());
+resetBtn.addEventListener('click', () => { resetCrop(); render(); });
+
+function closeBitmap() {
+  if (state.bitmap && typeof state.bitmap.close === 'function') {
+    try { state.bitmap.close(); } catch (_) {}
+  }
+  state.bitmap = null;
+}
+
+async function loadCurrent() {
+  closeBitmap();
+  if (state.index >= state.queue.length) { finish(); return; }
+  const item = state.queue[state.index];
+  paperDisplayEl.textContent = RATIOS[state.paper].label;
+  progressEl.textContent = `${state.index + 1} / ${state.queue.length}`;
+
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(item.file, { imageOrientation: 'from-image' });
+  } catch (err) {
+    console.error('画像読み込み失敗:', err);
+    alert(`画像「${item.name}」を読み込めませんでした。スキップします。`);
+    state.index++;
+    return loadCurrent();
+  }
+  state.bitmap = bitmap;
+  // 画像の向きに応じたデフォルトモード
+  state.mode = bitmap.width >= bitmap.height ? 'crop-h' : 'crop-v';
+  resetCrop();
+  updateFilename();
+  render();
+}
+
+function setMode(mode) {
+  state.mode = mode;
+  resetCrop();
+  updateFilename();
+  render();
+}
+
+function updateFilename() {
+  if (!state.queue[state.index]) return;
+  const baseName = state.queue[state.index].name.replace(/\.[^.]+$/, '');
+  filenameDisplay.textContent = `保存名: ${baseName}_${PAPER_SUFFIX[state.paper]}_${MODE_SUFFIX[state.mode]}.jpg`;
+}
+
+function resetCrop() {
+  if (!state.bitmap) return;
+  const sw = state.bitmap.width, sh = state.bitmap.height;
+  if (state.mode === 'fit') {
+    state.crop = { x: 0, y: 0, w: sw, h: sh };
+    return;
+  }
+  const R = state.mode === 'crop-h' ? RATIOS[state.paper].landscape : RATIOS[state.paper].portrait;
+  const sourceR = sw / sh;
+  let cw, ch, cx, cy;
+  if (sourceR > R) {
+    ch = sh;
+    cw = Math.round(sh * R);
+    if (cw > sw) cw = sw;
+    cx = Math.floor((sw - cw) / 2);
+    cy = 0;
+  } else {
+    cw = sw;
+    ch = Math.round(sw / R);
+    if (ch > sh) ch = sh;
+    cx = 0;
+    cy = Math.floor((sh - ch) / 2);
+  }
+  state.crop = { x: cx, y: cy, w: cw, h: ch };
+}
+
+function clampCrop() {
+  const sw = state.bitmap.width, sh = state.bitmap.height;
+  state.crop.x = Math.max(0, Math.min(sw - state.crop.w, state.crop.x));
+  state.crop.y = Math.max(0, Math.min(sh - state.crop.h, state.crop.y));
+}
+
+// ====== 描画 ======
+function render() {
+  updateModeButtons();
+  if (!state.bitmap) return;
+  const sw = state.bitmap.width, sh = state.bitmap.height;
+  const wrap = previewCanvas.parentElement;
+  const maxW = wrap.clientWidth - 32;
+  const maxH = wrap.clientHeight - 32;
+
+  // 白帯モードはアスペクト比を含めて表示
+  let dispSrcW = sw, dispSrcH = sh, offX = 0, offY = 0, outW = sw, outH = sh;
+  if (state.mode === 'fit') {
+    const sourceR = sw / sh;
+    const R = sourceR > 1 ? RATIOS[state.paper].landscape : RATIOS[state.paper].portrait;
+    if (sourceR > R) {
+      outW = sw;
+      outH = Math.round(sw / R);
+      offX = 0;
+      offY = Math.floor((outH - sh) / 2);
+    } else {
+      outH = sh;
+      outW = Math.round(sh * R);
+      offX = Math.floor((outW - sw) / 2);
+      offY = 0;
+    }
+  }
+
+  // プレビューの拡大率（ソース or 出力全体が収まるように）
+  const targetW = state.mode === 'fit' ? outW : sw;
+  const targetH = state.mode === 'fit' ? outH : sh;
+  const scale = Math.min(maxW / targetW, maxH / targetH, 1);
+  const cw = Math.max(1, Math.round(targetW * scale));
+  const ch = Math.max(1, Math.round(targetH * scale));
+  previewCanvas.width = cw;
+  previewCanvas.height = ch;
+  previewCanvas.style.width = cw + 'px';
+  previewCanvas.style.height = ch + 'px';
+
+  if (state.mode === 'fit') {
+    // 白：背景全体
+    previewCtx.fillStyle = '#FFFFFF';
+    previewCtx.fillRect(0, 0, cw, ch);
+    previewCtx.imageSmoothingEnabled = true;
+    previewCtx.imageSmoothingQuality = 'high';
+    previewCtx.drawImage(state.bitmap, 0, 0, sw, sh, offX * scale, offY * scale, sw * scale, sh * scale);
+    // 枠線（チェッカー風の薄い罫線）
+    previewCtx.strokeStyle = 'rgba(0,0,0,0.15)';
+    previewCtx.lineWidth = 1;
+    previewCtx.strokeRect(0.5, 0.5, cw - 1, ch - 1);
+    previewCanvas.classList.remove('crop-mode');
+    return;
+  }
+
+  // クロップモード: 画像全体をフェード表示し、クロップ枠だけ通常表示
+  previewCtx.fillStyle = '#000';
+  previewCtx.fillRect(0, 0, cw, ch);
+  previewCtx.imageSmoothingEnabled = true;
+  previewCtx.imageSmoothingQuality = 'high';
+  // 全体を半透明で
+  previewCtx.globalAlpha = 0.4;
+  previewCtx.drawImage(state.bitmap, 0, 0, cw, ch);
+  previewCtx.globalAlpha = 1.0;
+
+  // クロップ枠内を不透明で再描画
+  const cx = state.crop.x * scale;
+  const cy = state.crop.y * scale;
+  const cropDispW = state.crop.w * scale;
+  const cropDispH = state.crop.h * scale;
+  previewCtx.drawImage(
+    state.bitmap,
+    state.crop.x, state.crop.y, state.crop.w, state.crop.h,
+    cx, cy, cropDispW, cropDispH
+  );
+
+  // クロップ枠の縁
+  previewCtx.strokeStyle = '#ffffff';
+  previewCtx.lineWidth = 2;
+  previewCtx.strokeRect(cx + 1, cy + 1, cropDispW - 2, cropDispH - 2);
+  previewCtx.strokeStyle = 'rgba(0,0,0,0.5)';
+  previewCtx.lineWidth = 1;
+  previewCtx.strokeRect(cx + 0.5, cy + 0.5, cropDispW - 1, cropDispH - 1);
+
+  previewCanvas.classList.add('crop-mode');
+}
+
+function updateModeButtons() {
+  modeBtns.forEach(b => b.classList.toggle('active', b.dataset.mode === state.mode));
+}
+
+// ====== ドラッグ操作（クロップ位置の移動） ======
+let pointerDragInfo = null;
+
+previewCanvas.addEventListener('pointerdown', e => {
+  if (state.mode === 'fit' || !state.bitmap) return;
+  previewCanvas.setPointerCapture(e.pointerId);
+  previewCanvas.classList.add('dragging');
+  pointerDragInfo = {
+    pointerId: e.pointerId,
+    startX: e.clientX,
+    startY: e.clientY,
+    startCropX: state.crop.x,
+    startCropY: state.crop.y,
+    scale: getCurrentScale(),
+  };
+});
+previewCanvas.addEventListener('pointermove', e => {
+  if (!pointerDragInfo || pointerDragInfo.pointerId !== e.pointerId) return;
+  const dx = (e.clientX - pointerDragInfo.startX) / pointerDragInfo.scale;
+  const dy = (e.clientY - pointerDragInfo.startY) / pointerDragInfo.scale;
+  // クロップ可能な軸に応じて
+  const sw = state.bitmap.width, sh = state.bitmap.height;
+  if (state.crop.w < sw) {
+    state.crop.x = Math.round(pointerDragInfo.startCropX + dx);
+  }
+  if (state.crop.h < sh) {
+    state.crop.y = Math.round(pointerDragInfo.startCropY + dy);
+  }
+  clampCrop();
+  render();
+});
+function endPointerDrag(e) {
+  if (!pointerDragInfo) return;
+  if (e && e.pointerId !== pointerDragInfo.pointerId) return;
+  try { previewCanvas.releasePointerCapture(pointerDragInfo.pointerId); } catch (_) {}
+  previewCanvas.classList.remove('dragging');
+  pointerDragInfo = null;
+}
+previewCanvas.addEventListener('pointerup', endPointerDrag);
+previewCanvas.addEventListener('pointercancel', endPointerDrag);
+
+function getCurrentScale() {
+  if (!state.bitmap) return 1;
+  const sw = state.bitmap.width, sh = state.bitmap.height;
+  if (state.mode === 'fit') {
+    // 使われない（fitではドラッグ不可）
+    return 1;
+  }
+  return previewCanvas.width / sw;
+}
+
+// ====== キーボード ======
+document.addEventListener('keydown', e => {
+  if (!screens.edit.classList.contains('active')) return;
+  // フォーム入力中は無視（ボタンフォーカス等は許可したい）
+  const tag = (document.activeElement && document.activeElement.tagName) || '';
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+
+  if (e.key === 'Enter') { e.preventDefault(); saveAndNext(); return; }
+  if (e.key === 's' || e.key === 'S') { e.preventDefault(); skipCurrent(); return; }
+  if (e.key === '1') { e.preventDefault(); setMode('crop-h'); return; }
+  if (e.key === '2') { e.preventDefault(); setMode('crop-v'); return; }
+  if (e.key === '3') { e.preventDefault(); setMode('fit'); return; }
+
+  if (state.mode === 'fit' || !state.bitmap) return;
+  const step = e.shiftKey ? 10 : 1;
+  let moved = false;
+  const sw = state.bitmap.width, sh = state.bitmap.height;
+  if (e.key === 'ArrowLeft' && state.crop.w < sw)  { state.crop.x -= step; moved = true; }
+  if (e.key === 'ArrowRight' && state.crop.w < sw) { state.crop.x += step; moved = true; }
+  if (e.key === 'ArrowUp' && state.crop.h < sh)    { state.crop.y -= step; moved = true; }
+  if (e.key === 'ArrowDown' && state.crop.h < sh)  { state.crop.y += step; moved = true; }
+  if (moved) {
+    e.preventDefault();
+    clampCrop();
+    render();
+  }
+});
+
+// ====== 出力 ======
+async function saveAndNext() {
+  if (!state.bitmap) return;
+  saveBtn.disabled = true;
+  try {
+    const blob = await renderOutputBlob();
+    const baseName = state.queue[state.index].name.replace(/\.[^.]+$/, '');
+    const fname = `${baseName}_${PAPER_SUFFIX[state.paper]}_${MODE_SUFFIX[state.mode]}.jpg`;
+    triggerDownload(blob, fname);
+    state.processed++;
+    state.index++;
+    // 連続ダウンロードのブラウザ制限を避ける短いウェイト
+    await new Promise(r => setTimeout(r, 120));
+    await loadCurrent();
+  } catch (err) {
+    console.error(err);
+    alert('保存に失敗しました: ' + (err && err.message ? err.message : err));
+  } finally {
+    saveBtn.disabled = false;
+  }
+}
+
+function skipCurrent() {
+  state.index++;
+  loadCurrent();
+}
+
+function renderOutputBlob() {
+  return new Promise((resolve, reject) => {
+    const sw = state.bitmap.width, sh = state.bitmap.height;
+    let outW, outH;
+    let canvas;
+
+    if (state.mode === 'fit') {
+      const sourceR = sw / sh;
+      const R = sourceR > 1 ? RATIOS[state.paper].landscape : RATIOS[state.paper].portrait;
+      let offX, offY;
+      if (sourceR > R) {
+        outW = sw;
+        outH = Math.round(sw / R);
+        offX = 0;
+        offY = Math.floor((outH - sh) / 2);
+      } else {
+        outH = sh;
+        outW = Math.round(sh * R);
+        offX = Math.floor((outW - sw) / 2);
+        offY = 0;
+      }
+      canvas = createOutputCanvas(outW, outH);
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, outW, outH);
+      ctx.drawImage(state.bitmap, offX, offY);
+    } else {
+      // crop
+      outW = state.crop.w;
+      outH = state.crop.h;
+      canvas = createOutputCanvas(outW, outH);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(
+        state.bitmap,
+        state.crop.x, state.crop.y, state.crop.w, state.crop.h,
+        0, 0, outW, outH
+      );
+    }
+
+    const finishBlob = blob => {
+      if (!blob) reject(new Error('Blob 生成に失敗')); else resolve(blob);
+    };
+    if (canvas.convertToBlob) {
+      canvas.convertToBlob({ type: 'image/jpeg', quality: JPEG_QUALITY }).then(finishBlob, reject);
+    } else {
+      canvas.toBlob(finishBlob, 'image/jpeg', JPEG_QUALITY);
+    }
+  });
+}
+
+function createOutputCanvas(w, h) {
+  if (typeof OffscreenCanvas !== 'undefined') {
+    try { return new OffscreenCanvas(w, h); } catch (_) {}
+  }
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  return c;
+}
+
+function triggerDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+// ====== 完了画面 ======
+function finish() {
+  closeBitmap();
+  document.getElementById('doneCount').textContent = state.processed;
+  document.getElementById('doneTotal').textContent = state.processed;
+  showScreen('done');
+}
+document.getElementById('restartBtn').addEventListener('click', () => {
+  state.queue = [];
+  state.index = 0;
+  state.processed = 0;
+  fileInput.value = '';
+  showScreen('start');
+});
+
+// ====== ウィンドウリサイズ対応 ======
+window.addEventListener('resize', () => {
+  if (screens.edit.classList.contains('active')) render();
+});
+
+</script>
+</body>
+</html>
